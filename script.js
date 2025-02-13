@@ -1,7 +1,6 @@
 let score = 0;
 let timeLeft = 60;
 let highestScore = localStorage.getItem("highestScore") ? parseInt(localStorage.getItem("highestScore")) : 0;
-let scoreHistory = JSON.parse(localStorage.getItem("scoreHistory")) || [];
 let activeElement = null;
 let timerInterval;
 let balloonInterval;
@@ -20,73 +19,81 @@ function getRandomNumber(min, max) {
 function createBalloon() {
     const balloon = document.createElement("div");
     balloon.classList.add("heart");
-
-    if (Math.random() > 0.8) {
-        balloon.classList.add("zigzag"); // Randomly assign zigzag movement
-    }
-
-    const balloonNumber = getRandomNumber(1, 10);
-    balloon.textContent = balloonNumber;
-    balloon.dataset.value = balloonNumber;
-
+    balloon.textContent = getRandomNumber(1, 10);
+    balloon.dataset.value = balloon.textContent;
     balloon.style.left = getRandomNumber(10, 90) + "%";
     balloon.style.animationDuration = getRandomNumber(5, 8) + "s";
-
     document.querySelector(".container").appendChild(balloon);
+    enableDragging(balloon);
 }
 
 function startBalloons() {
-    balloonInterval = setInterval(createBalloon, 1000);
+    balloonInterval = setInterval(createBalloon, window.innerWidth <= 600 ? 1500 : 1000);
 }
 
-document.addEventListener("mousedown", function (event) {
-    const target = event.target.closest(".heart");
-    if (!target || activeElement) return;
-
-    activeElement = target;
-    activeElement.style.animation = "none";
-    activeElement.style.position = "absolute";
-    activeElement.style.zIndex = 1000;
-
-    moveAt(event.pageX, event.pageY);
-
+function enableDragging(balloon) {
     function moveAt(clientX, clientY) {
-        activeElement.style.left = clientX - activeElement.offsetWidth / 2 + "px";
-        activeElement.style.top = clientY - activeElement.offsetHeight / 2 + "px";
+        balloon.style.left = clientX - balloon.offsetWidth / 2 + "px";
+        balloon.style.top = clientY - balloon.offsetHeight / 2 + "px";
     }
 
-    function onMouseMove(event) {
-        moveAt(event.pageX, event.pageY);
-    }
+    function startDrag(event) {
+        if (activeElement) return;
+        event.preventDefault(); // Prevent scrolling on mobile
 
-    document.addEventListener("mousemove", onMouseMove);
+        activeElement = balloon;
+        activeElement.style.animation = "none";
+        activeElement.style.position = "absolute";
+        activeElement.style.zIndex = 1000;
 
-    document.addEventListener("mouseup", function release() {
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", release);
+        let clientX = event.clientX || event.touches[0].clientX;
+        let clientY = event.clientY || event.touches[0].clientY;
 
-        const bucket = document.querySelector(".bucket");
-        const bucketRect = bucket.getBoundingClientRect();
-        const heartRect = activeElement.getBoundingClientRect();
+        moveAt(clientX, clientY);
 
-        if (
-            heartRect.left >= bucketRect.left &&
-            heartRect.right <= bucketRect.right &&
-            heartRect.top >= bucketRect.top &&
-            heartRect.bottom <= bucketRect.bottom
-        ) {
-            score += parseInt(activeElement.dataset.value);
-            document.getElementById("score").textContent = score;
-            activeElement.remove();
-            popSound.play();
-        } else {
-            activeElement.style.animation = "floatUp 6s infinite ease-in-out";
-            errorSound.play();
+        function onMove(event) {
+            let moveX = event.clientX || event.touches[0].clientX;
+            let moveY = event.clientY || event.touches[0].clientY;
+            moveAt(moveX, moveY);
         }
 
-        activeElement = null;
-    }, { once: true });
-});
+        function release() {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", release);
+            document.removeEventListener("touchmove", onMove);
+            document.removeEventListener("touchend", release);
+
+            const bucket = document.querySelector(".bucket");
+            const bucketRect = bucket.getBoundingClientRect();
+            const heartRect = activeElement.getBoundingClientRect();
+
+            if (
+                heartRect.left >= bucketRect.left &&
+                heartRect.right <= bucketRect.right &&
+                heartRect.top >= bucketRect.top &&
+                heartRect.bottom <= bucketRect.bottom
+            ) {
+                score += parseInt(activeElement.dataset.value);
+                document.getElementById("score").textContent = score;
+                activeElement.remove();
+                popSound.play();
+            } else {
+                activeElement.style.animation = "floatUp 6s infinite ease-in-out";
+                errorSound.play();
+            }
+
+            activeElement = null;
+        }
+
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", release);
+        document.addEventListener("touchmove", onMove, { passive: false });
+        document.addEventListener("touchend", release);
+    }
+
+    balloon.addEventListener("mousedown", startDrag);
+    balloon.addEventListener("touchstart", startDrag, { passive: false });
+}
 
 function startTimer() {
     timerInterval = setInterval(() => {
@@ -103,12 +110,6 @@ function startTimer() {
 function endGame() {
     gameOverSound.play();
     alert("Time's up! Your final score: " + score);
-
-    scoreHistory.push(score);
-    localStorage.setItem("scoreHistory", JSON.stringify(scoreHistory));
-
-    let averageScore = scoreHistory.reduce((a, b) => a + b, 0) / scoreHistory.length;
-    document.getElementById("average-score").textContent = Math.round(averageScore);
 
     if (score > highestScore) {
         highestScore = score;
